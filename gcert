@@ -1,0 +1,90 @@
+#!/bin/bash
+#
+#   gcert - generate Globus certificate from InCommon cert file
+#
+#   Author:          Brian Vanderwende
+#   Last Revised:   14:22, 13 Aug 2019
+#
+
+function usage {
+cat << EOF
+Usage: $0 CERTIFICATE
+
+Input the path to the InCommon certificate file (p12 extension).
+EOF
+}
+
+function cert_usage {
+    echo -e "\nActivating endpoints using certificate ..."
+    
+    module load python
+    ncar_pylib > /dev/null
+    EPGLADE=$(globus endpoint search "NCAR GLADE" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
+    EPSTORE=$(globus endpoint search "NCAR Campaign Storage" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
+    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPGLADE > /dev/null
+    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPSTORE > /dev/null
+
+    if [[ $? == 0 ]]; then
+        echo -e "\nSuccess: GLADE and Campaign Storage endpoints are now using your"
+        echo -e "         long-lived certificate\n"
+    fi
+}
+
+if [[ " $@ " == *" -h "* ]]; then
+    usage
+    exit 0
+fi
+
+if [[ -f ~/.${USER}-globus.cert ]]; then
+cat << EOF
+Note:    a Globus certificate already exists in your home directory. Please
+         delete this file before running this script if you wish to create
+         a new certificate.
+
+         ${HOME}/.${USER}-globus.cert
+EOF
+
+    cert_usage
+    exit 2
+else
+    if [[ ! -f $1 ]]; then
+        usage
+        exit 1
+    fi
+fi
+
+# Convert PFX file to PEM (try PIN-less first, then ask)
+openssl pkcs12 -in $1 -passout pass:tpass -passin pass: > ${USER}.pem 2> /dev/null
+
+if [[ $? == 1 ]]; then
+    echo -e "InCommon certificate appears to be PIN-protected. Please enter your PIN below.\n"
+    openssl pkcs12 -in $1 -passout pass:tpass > ${USER}.pem || exit 1
+fi
+
+# Remove passphrase from private key
+openssl rsa -in ${USER}.pem -out ${USER}-rsa.pem -passin pass:tpass
+
+# Get necessary certificate for globus
+awk '/-----BEGIN C/{p=1}/-----END C/{print;exit} p' ${USER}.pem > ~/.${USER}-globus.cert
+
+# Append the RSA key onto the cert file
+cat ${USER}-rsa.pem >> ~/.${USER}-globus.cert
+
+# Remove temporary files for security
+rm ${USER}.pem ${USER}-rsa.pem
+
+# Set strict permissions on cert file for security
+chmod 400 ~/.${USER}-globus.cert
+
+cat << EOF
+
+
+Globus certificate created in ${HOME}!
+
+To ensure the security of your data, do not share the certificate.
+Deleting the input credential file from GLADE is strongly advised:
+
+    $1
+EOF
+
+cert_usage

@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ $BMODE == true ]]; then
+    TID=$(globus transfer $1 --jq "task_id" --notify off --format UNIX $2 $3 < $BFILE)
+    rm -f $BFILE
+else
+    TID=$(globus transfer $1 --jq "task_id" --notify off --format UNIX $2 $3)
+fi
+
+if [[ $? != 0 ]]; then
+    echo "Error: could not initiate transfer"
+    exit 3
+fi

@@ -1,0 +1,140 @@
+#!/bin/bash
+#
+#   gci - Globus Campaign Storage interface
+#
+#   This command redirects actions to other helper commands
+#   that perform Globus operations between GLADE and the
+#   Campaign Storage file systems
+#
+#   Author:         Brian Vanderwende
+#   Last Revised:   10:14, 14 Aug 2019
+#
+
+# Do we need help?
+function usage {
+cat << EOF
+Usage: $0 [OPTIONS] COMMAND
+
+This utility provides a convenient interface for transferring files between
+the CISL endpoints "NCAR GLADE" and "NCAR Campaign Storage". An attempt will
+be made to auto-authenticate using a long-lived certificate file. All requests
+utilize the Globus CLI to schedule and conduct transfers.
+
+Available commands:
+    cget    conditionally copy files from campaign Storage to GLADE if newer
+    cput    conditionally copy files from GLADE to Campaign Storage if newer
+    get     copy files from campaign Storage to GLADE
+    put     copy files from GLADE to Campaign Storage
+    mkdir   create a new directory on Campaign Storage
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    KEY="$1"
+    case $KEY in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -b|--background)
+            export BGCMD=true
+            ;;
+        -d|--debug)
+            export DEBUG=true
+            ;;
+        *)
+            break
+    esac
+    shift
+done
+
+# First, make sure environment is configured for globus
+echo "Initializing Globus CLI environment ..."
+
+if ! which globus &> /dev/null; then
+    module load python
+    ncar_pylib > /dev/null
+fi
+
+# Then, make sure the user is logged in
+if ! globus whoami &> /dev/null; then
+    echo 'Error: login to Globus service using "globus login" before using gcs'
+    echo '       (access Globus CLI via NCAR Package Library in Python)'
+    exit 1
+fi
+
+# Set fields we care about in commands
+CERTFILE=~/.$USER-globus.cert
+EPGLADE=$(globus endpoint search "NCAR GLADE"               \
+          --filter-owner-id ncar@globusid.org               \
+          --jq "DATA[0].id" --format UNIX)
+EPSTORE=$(globus endpoint search "NCAR Campaign Storage"    \
+          --filter-owner-id ncar@globusid.org               \
+          --jq "DATA[0].id" --format UNIX)
+
+# User messages
+function cert_notice {
+cat << EOF
+Note:  CISL endpoints are not activated and no long-lived certificate is
+       available. Consider certificate activation if using commands in
+       unattended workflow.
+
+Using standard authenication with two-factor login ..."
+EOF
+}
+
+# Next, perform endpoint activation check
+echo "Checking endpoint status ..."
+
+for EPID in $EPGLADE $EPSTORE; do
+    if ! globus endpoint is-activated $EPID &> /dev/null; then
+        echo "  activating $EPID"
+
+        if [[ -f $CERTFILE ]]; then
+            globus endpoint activate --no-autoactivate --delegate-proxy $CERTFILE $EPID > /dev/null
+        else
+            cert_notice
+            globus endpoint activate --myproxy $EPID
+        fi
+
+        STATUS=$?
+
+        if [[ $STATUS != 0 ]]; then
+            echo "Error: could not activate endpoint (error $STATUS). Aborting."
+            exit 2
+        fi
+    fi
+done
+
+# Now that we are configured, run sub-command
+export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
+export GCICMD=$1
+
+# Scan Globus options for impactful settings
+for KEY in $@; do
+    case $KEY in
+        --batch)
+            export BMODE=true
+            export BFILE=${TMPDIR:-/tmp}/globbatch.$$
+            MYTMP=${TMPDIR:-fakepath}
+
+            if [[ $(readlink -f /dev/stdin) =~ /(glade|tmp|$MYTMP)/* ]] ; then
+                export BATCHDATA=$(</dev/stdin)
+            fi
+            ;;
+        -r|--recursive)
+            export RMODE=true
+            ;;
+    esac
+done
+
+if [[ -f $GCIBIN/$GCICMD ]]; then
+    shift
+    export EPGLADE EPSTORE
+    echo
+    $GCIBIN/$GCICMD $@
+else
+    echo -e "Error: invalid command $GCICMD\n"
+    usage
+    exit 1
+fi

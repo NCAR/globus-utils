@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+#   gci subcommand get
+#
+#   This subcommand gets data from the Campaign Storage platform and
+#   puts it on GLADE via a Globus transfer. It should be called via
+#   the gci command.
+#
+#   Author:         Brian Vanderwende
+#   Last Revised:   10:37, 14 Aug 2019
+#
+
+function usage {
+cat << EOF
+Usage: gci get [OPTIONS] SOURCE:[DESTINATION]
+
+The get subcommand retrieves specified files and/or directories
+from Campaign Storage and copies them to the target location
+on GLADE.
+
+If a destination is not specified, the file or directory will be
+copied to the present working directory on GLADE.
+
+Batch mode is also supported. In this mode, standard input (as a
+file or here-doc) is given  which contains SOURCE and DESTINATION
+paths for each file to be retrieved from Campaign Storage. You
+may still use the SOURCE and DESTINATION argument on the command
+line - they will be prefixed onto each file path. Usage:
+
+gci get --batch [SOURCE:DESTINATION] < filelist.txt
+EOF
+}
+
+if [[ " $@ " == *" -h"* ]]; then
+    usage
+    exit 0
+fi
+
+# Are we in conditional mode?
+if [[ $(basename $0) == c* ]]; then
+    GTARGS="-s mtime"
+fi
+
+# Cycle through command-line arguments and check on SOURCE and DEST
+function check_paths {
+    [[ $SPATH != /gpfs/csfs1/* ]] && SPATH=/gpfs/csfs1/$SPATH
+    [[ $GPATH != /* ]] && GPATH=$(pwd)/$GPATH
+    [[ ${GPATH}z == z ]] && GPATH=$(pwd)/${SPATH##*/}
+    [[ $RMODE != true ]] && [[ -d $GPATH ]] && GPATH=$GPATH/${SPATH##*/}
+}
+
+for ARG in $@; do
+    if [[ $ARG == *:* ]]; then
+        SPATH=${ARG%:*} GPATH=${ARG#*:}
+        
+        if [[ $BMODE != true ]]; then
+            if [[ ${SPATH}z == z ]]; then
+                echo "Error: no file/directory specified on Campaign Storage"
+                exit 4
+            fi
+
+            check_paths
+        fi 
+    else
+        GTARGS="$ARG $GTARGS"
+    fi
+done
+
+# Check each item in batch mode itinerary
+if [[ $BMODE == true ]]; then
+    [[ ${GPATH}z != z ]] && GPREFIX=$GPATH/
+    [[ ${SPATH}z != z ]] && SPREFIX=$SPATH/
+
+    while read -r LINE; do
+        DIRS=( $(sed 's/ -r//;s/ --recursive//' <<< " $LINE") )
+        SPATH=${SPREFIX}${DIRS[0]}
+        GPATH=${GPREFIX}${DIRS[1]}
+        
+        check_paths
+
+        if [[ " $LINE" == *" -r"* ]] || [[ " $LINE" == *" --recursive"* ]]; then
+            echo "-r $SPATH $GPATH" >> $BFILE
+        else
+            echo "$SPATH $GPATH" >> $BFILE
+        fi
+    done <<< "$BATCHDATA"
+
+    GPATH= SPATH=
+fi
+
+# Add endpoint IDs to SOURCE and DEST
+if [[ ${SPATH}z == z ]]; then
+    SOURCE=$EPSTORE
+else
+    SOURCE=$EPSTORE:$SPATH
+fi
+
+if [[ ${GPATH}z == z ]]; then
+    DESTINATION=$EPGLADE
+else
+    DESTINATION=$EPGLADE:$GPATH
+fi
+
+# Now call globus transfer
+cat << EOF
+Running command ...
+
+globus transfer $GTARGS
+    $SOURCE
+    $DESTINATION
+
+EOF
+
+[[ $DEBUG == true ]] && exit 0
+source $GCIBIN/transfer "$GTARGS" $SOURCE $DESTINATION
+$GCIBIN/task-wait $TID
