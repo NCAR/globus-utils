@@ -7,8 +7,19 @@
 #   Campaign Storage file systems
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   10:14, 14 Aug 2019
+#   Last Revised:   17:01, 09 Sep 2019
 #
+
+unset BFILE
+
+function clean_up {
+    CMDSTAT=$?
+    rm -f $BFILE
+    exit $CMDSTAT
+}
+
+# Exit upon signal (so we don't resubmit SSH command)
+trap clean_up SIGHUP SIGINT SIGQUIT SIGTERM
 
 # Do we need help?
 function usage {
@@ -48,93 +59,43 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# First, make sure environment is configured for globus
-echo "Initializing Globus CLI environment ..."
+# If in batch mode, store stdin in a file
+if [[ " $@ " == *" --batch "* ]]; then
+    MYTMP=${TMPDIR:-fakepath}
+    export BTMP=/glade/scratch/$USER/globtmp.$$
 
-if ! which globus &> /dev/null; then
-    module load python
-    ncar_pylib > /dev/null
-fi
-
-# Then, make sure the user is logged in
-if ! globus whoami &> /dev/null; then
-    echo 'Error: login to Globus service using "globus login" before using gcs'
-    echo '       (access Globus CLI via NCAR Package Library in Python)'
-    exit 1
-fi
-
-# Set fields we care about in commands
-CERTFILE=~/.$USER-globus.cert
-EPGLADE=$(globus endpoint search "NCAR GLADE"               \
-          --filter-owner-id ncar@globusid.org               \
-          --jq "DATA[0].id" --format UNIX)
-EPSTORE=$(globus endpoint search "NCAR Campaign Storage"    \
-          --filter-owner-id ncar@globusid.org               \
-          --jq "DATA[0].id" --format UNIX)
-
-# User messages
-function cert_notice {
-cat << EOF
-Note:  CISL endpoints are not activated and no long-lived certificate is
-       available. Consider certificate activation if using commands in
-       unattended workflow.
-
-Using standard authenication with two-factor login ..."
-EOF
-}
-
-# Next, perform endpoint activation check
-echo "Checking endpoint status ..."
-
-for EPID in $EPGLADE $EPSTORE; do
-    if ! globus endpoint is-activated $EPID &> /dev/null; then
-        echo "  activating $EPID"
-
-        if [[ -f $CERTFILE ]]; then
-            globus endpoint activate --no-autoactivate --delegate-proxy $CERTFILE $EPID > /dev/null
-        else
-            cert_notice
-            globus endpoint activate --myproxy $EPID
-        fi
-
-        STATUS=$?
-
-        if [[ $STATUS != 0 ]]; then
-            echo "Error: could not activate endpoint (error $STATUS). Aborting."
-            exit 2
-        fi
+    if [[ $(readlink -f /dev/stdin) =~ /(glade|tmp|$MYTMP)/* ]] ; then
+        cat > $BTMP
     fi
-done
-
-# Now that we are configured, run sub-command
-export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
-export GCICMD=$1
-
-# Scan Globus options for impactful settings
-for KEY in $@; do
-    case $KEY in
-        --batch)
-            export BMODE=true
-            export BFILE=${TMPDIR:-/tmp}/globbatch.$$
-            MYTMP=${TMPDIR:-fakepath}
-
-            if [[ $(readlink -f /dev/stdin) =~ /(glade|tmp|$MYTMP)/* ]] ; then
-                export BATCHDATA=$(</dev/stdin)
-            fi
-            ;;
-        -r|--recursive)
-            export RMODE=true
-            ;;
-    esac
-done
-
-if [[ -f $GCIBIN/$GCICMD ]]; then
-    shift
-    export EPGLADE EPSTORE
-    echo
-    $GCIBIN/$GCICMD $@
-else
-    echo -e "Error: invalid command $GCICMD\n"
-    usage
-    exit 1
 fi
+
+# Call main script locally or on login node
+export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
+
+if [[ $(hostname) == r* ]]; then
+    SNODE=$(shuf -i 1-6 -n 1)
+    LN=$SNODE SSHSTAT=255
+    RCMD="export BGCMD=$BGCMD DEBUG=$DEBUG BTMP=$BTMP TMPDIR=$TMPDIR GCIBIN=$GCIBIN; cd $(pwd); $GCIBIN/main $@"
+
+    while [[ $SSHSTAT -eq 255 ]]; do
+        ssh cheyenne${LN}.ib0 "/bin/bash -c \"$RCMD\""
+        SSHSTAT=$? LN=$((LN + 1))
+
+        if [[ $LN -gt 6 ]]; then
+            LN=1
+        elif [[ $LN -eq $SNODE ]]; then
+            break
+        fi
+    done
+
+    if [[ $SSHSTAT -eq 255 ]]; then
+        echo "Error: could not connect to a login node; transfer aborted"
+        exit 255
+    fi
+
+    exit $SSHSTAT
+else
+    $GCIBIN/main $@
+fi
+
+clean_up

@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   14:22, 13 Aug 2019
+#   Last Revised:   15:57, 11 Sep 2019
 #
 
 function usage {
@@ -19,6 +19,13 @@ function cert_usage {
     
     module load python
     ncar_pylib > /dev/null
+    
+    if ! globus whoami &> /dev/null; then
+        echo "You are not currently logged into the Globus service"
+        echo "Running 'globus login' ..."
+        globus login
+    fi
+    
     EPGLADE=$(globus endpoint search "NCAR GLADE" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
     EPSTORE=$(globus endpoint search "NCAR Campaign Storage" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
     globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPGLADE > /dev/null

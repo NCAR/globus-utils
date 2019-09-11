@@ -7,7 +7,7 @@
 #   the gci command.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   10:37, 14 Aug 2019
+#   Last Revised:   15:25, 09 Sep 2019
 #
 
 function usage {
@@ -71,7 +71,7 @@ if [[ $BMODE == true ]]; then
     [[ ${GPATH}z != z ]] && GPREFIX=$GPATH/
     [[ ${SPATH}z != z ]] && SPREFIX=$SPATH/
 
-    while read -r LINE; do
+    while IFS= read -r LINE; do
         DIRS=( $(sed 's/ -r//;s/ --recursive//' <<< " $LINE") )
         SPATH=${SPREFIX}${DIRS[0]}
         GPATH=${GPREFIX}${DIRS[1]}
@@ -83,7 +83,7 @@ if [[ $BMODE == true ]]; then
         else
             echo "$SPATH $GPATH" >> $BFILE
         fi
-    done <<< "$BATCHDATA"
+    done < $BTMP
 
     GPATH= SPATH=
 fi

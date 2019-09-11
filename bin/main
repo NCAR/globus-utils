@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+#   The main body of the gci command is split off into this
+#   separate script because it is necessary to run these commands
+#   within an SSH call if running in a Cheyenne batch node.
+#
+#   Author:         Brian Vanderwende
+#   Last Revised:   17:06, 09 Sep 2019
+#
+
+# First, make sure environment is configured for globus
+echo "Initializing Globus CLI environment ..."
+
+if ! which globus &> /dev/null; then
+    module load python
+    ncar_pylib > /dev/null
+fi
+
+# Then, make sure the user is logged in
+if ! globus whoami &> /dev/null; then
+    echo 'Error: login to Globus service using "globus login" before using gcs'
+    echo '       (access Globus CLI via NCAR Package Library in Python)'
+    exit 1
+fi
+
+# Set fields we care about in commands
+CERTFILE=~/.$USER-globus.cert
+EPGLADE=$(globus endpoint search "NCAR GLADE"               \
+          --filter-owner-id ncar@globusid.org               \
+          --jq "DATA[0].id" --format UNIX)
+EPSTORE=$(globus endpoint search "NCAR Campaign Storage"    \
+          --filter-owner-id ncar@globusid.org               \
+          --jq "DATA[0].id" --format UNIX)
+
+# User messages
+function cert_notice {
+cat << EOF
+Note:  CISL endpoints are not activated and no long-lived certificate is
+       available. Consider certificate activation if using commands in
+       unattended workflow.
+
+Using standard authenication with two-factor login ..."
+EOF
+}
+
+# Next, perform endpoint activation check
+echo "Checking endpoint status ..."
+
+for EPID in $EPGLADE $EPSTORE; do
+    if ! globus endpoint is-activated $EPID &> /dev/null; then
+        echo "  activating $EPID"
+
+        if [[ -f $CERTFILE ]]; then
+            globus endpoint activate --no-autoactivate --delegate-proxy $CERTFILE $EPID > /dev/null
+        else
+            cert_notice
+            globus endpoint activate --myproxy $EPID
+        fi
+
+        STATUS=$?
+
+        if [[ $STATUS != 0 ]]; then
+            echo "Error: could not activate endpoint (error $STATUS). Aborting."
+            exit 2
+        fi
+    fi
+done
+
+# Now that we are configured, run sub-command
+export GCICMD=$1
+
+# Scan Globus options for impactful settings
+for KEY in $@; do
+    case $KEY in
+        --batch)
+            export BMODE=true
+            export BFILE=/glade/scratch/$USER/globbatch.$$
+            ;;
+        -r|--recursive)
+            export RMODE=true
+            ;;
+    esac
+done
+
+if [[ -f $GCIBIN/$GCICMD ]]; then
+    shift
+    export EPGLADE EPSTORE
+    echo
+    $GCIBIN/$GCICMD $@
+else
+    echo -e "Error: invalid command $GCICMD\n"
+    usage
+    exit 1
+fi
