@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   15:57, 11 Sep 2019
+#   Last Revised:   08:06, 12 Sep 2019
 #
 
 function usage {
@@ -42,6 +42,13 @@ if [[ " $@ " == *" -h "* ]]; then
     exit 0
 fi
 
+if [[ $(hostname) == r* ]]; then
+    echo "Error:   gcert requires and outbound connection to the Globus auth server"
+    echo "         and therefore cannot be run from PBS jobs"
+
+    exit 1
+fi
+    
 if [[ -f ~/.${USER}-globus.cert ]]; then
 cat << EOF
 Note:    a Globus certificate already exists in your home directory. Please
