@@ -5,7 +5,7 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   17:06, 09 Sep 2019
+#   Last Revised:   14:59, 01 Oct 2019
 #
 
 # First, make sure environment is configured for globus
@@ -47,14 +47,23 @@ EOF
 echo "Checking endpoint status ..."
 
 for EPID in $EPGLADE $EPSTORE; do
-    if ! globus endpoint is-activated $EPID &> /dev/null; then
+    if ! globus endpoint is-activated $EPID &> /dev/null || [[ $AFORCE == true ]]; then
+        if [[ $LIFETIME != 12 ]]; then
+            "Using custom lifetime of $LIFETIME h"
+        fi
+
         echo "  activating $EPID"
 
         if [[ -f $CERTFILE ]]; then
-            globus endpoint activate --no-autoactivate --delegate-proxy $CERTFILE $EPID > /dev/null
+            globus endpoint activate    --no-autoactivate --force   \
+                                        --delegate-proxy $CERTFILE  \
+                                        --proxy-lifetime $LIFETIME  \
+                                        $EPID > /dev/null
         else
             cert_notice
-            globus endpoint activate --myproxy $EPID
+            globus endpoint activate    --no-autoactivate --force   \
+                                        --proxy-lifetime $LIFETIME  \
+                                        --myproxy $EPID
         fi
 
         STATUS=$?

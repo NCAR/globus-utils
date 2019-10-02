@@ -1,0 +1,52 @@
+#!/bin/bash
+#
+#   gci subcommand mkdir
+#
+#   Author:         Brian Vanderwende
+#   Last Revised:   11:47, 02 Oct 2019
+#
+
+function usage {
+cat << EOF
+Usage: gci rm [OPTIONS] PATH
+
+This command allows you to remove a file or recursively remove directories
+on the Campaign Storage endpoint.
+EOF
+}
+
+if [[ " $@ " == *" -h"* ]]; then
+    usage
+    exit 0
+fi
+
+# Add endpoint ID to the TARGET
+for (( i=$#; i>0; i-- )); do
+    KEY=${!i}
+
+    if [[ ${TARGET}z == z ]]; then
+        TARGET=$KEY
+    else
+        GTARGS="$KEY $GTARGS"
+    fi
+done
+
+if [[ ${TARGET}z == z ]]; then
+    echo "Must provide path to remove on Campaign Storage"
+    exit 10
+else
+    [[ $TARGET != /gpfs/csfs1/* ]] && TARGET=/gpfs/csfs1/$TARGET
+    TARGET=$EPSTORE:$TARGET
+fi
+
+# Now call globus transfer
+cat << EOF
+Running command ...
+
+globus rm $GTARGS
+    $TARGET
+
+EOF
+
+[[ $DEBUG == true ]] && exit 0
+globus rm $GTARGS --notify off $TARGET

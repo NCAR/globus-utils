@@ -7,7 +7,7 @@
 #   Campaign Storage file systems
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   17:01, 09 Sep 2019
+#   Last Revised:   10:33, 02 Oct 2019
 #
 
 unset BFILE
@@ -37,8 +37,19 @@ Available commands:
     get     copy files from campaign Storage to GLADE
     put     copy files from GLADE to Campaign Storage
     mkdir   create a new directory on Campaign Storage
+    ls      list files from a directory on Campaign Storage
+    rm      remove files on Campaign Storage
+
+gci options:
+    -b, --background        run transfer in background - do not wait for it to finish
+    -f, --force-auth        force gci to re-authenticate endpoints regardless of status
+    -l, --cert-lifetime N   authenticate endpoints for N hours (0<N<=720, default=12)
+
 EOF
 }
+
+# Set some defaults
+export LIFETIME=12 AFORCE=false
 
 while [[ $# -gt 0 ]]; do
     KEY="$1"
@@ -52,6 +63,22 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--debug)
             export DEBUG=true
+            ;;
+        -l|--cert-lifetime)
+            if [[ $KEY == *=* ]]; then
+                LIFETIME=${KEY#*=}
+            else
+                LIFETIME=$2
+                shift
+            fi
+
+            if [[ $LIFETIME < 1 ]] || [[ $LIFETIME > 720 ]]; then
+                echo "Error: custom lifetime should be 0 < LIFETIME <= 720 hours"
+                exit 200
+            fi
+            ;;
+        -f|--force-auth)
+            AFORCE=true
             ;;
         *)
             break
@@ -75,7 +102,7 @@ export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
 if [[ $(hostname) == r* ]]; then
     SNODE=$(shuf -i 1-6 -n 1)
     LN=$SNODE SSHSTAT=255
-    RCMD="export BGCMD=$BGCMD DEBUG=$DEBUG BTMP=$BTMP TMPDIR=$TMPDIR GCIBIN=$GCIBIN; cd $(pwd); $GCIBIN/main $@"
+    RCMD="export BGCMD=$BGCMD DEBUG=$DEBUG BTMP=$BTMP TMPDIR=$TMPDIR GCIBIN=$GCIBIN LIFETIME=$LIFETIME AFORCE=$AFORCE; cd $(pwd); $GCIBIN/main $@"
 
     while [[ $SSHSTAT -eq 255 ]]; do
         ssh cheyenne${LN}.ib0 "/bin/bash -c \"$RCMD\""
