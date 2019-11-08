@@ -5,14 +5,14 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   12:05, 02 Oct 2019
+#   Last Revised:   13:10, 08 Nov 2019
 #
 
 # First, make sure environment is configured for globus
 echo "Initializing Globus CLI environment ..."
 
 if ! which globus &> /dev/null; then
-    module load python
+    module load ncarenv python > /dev/null
     ncar_pylib > /dev/null
 fi
 

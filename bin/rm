@@ -3,7 +3,7 @@
 #   gci subcommand mkdir
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   11:47, 02 Oct 2019
+#   Last Revised:   13:12, 08 Nov 2019
 #
 
 function usage {
@@ -35,7 +35,7 @@ if [[ ${TARGET}z == z ]]; then
     echo "Must provide path to remove on Campaign Storage"
     exit 10
 else
-    [[ $TARGET != /gpfs/csfs1/* ]] && TARGET=/gpfs/csfs1/$TARGET
+    [[ $TARGET != /gpfs/csfs1/* ]] && [[ $TARGET != /glade/campaign/* ]] && TARGET=/gpfs/csfs1/$TARGET
     TARGET=$EPSTORE:$TARGET
 fi
 

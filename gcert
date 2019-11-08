@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   08:06, 12 Sep 2019
+#   Last Revised:   13:09, 08 Nov 2019
 #
 
 function usage {
@@ -17,7 +17,7 @@ EOF
 function cert_usage {
     echo -e "\nActivating endpoints using certificate ..."
     
-    module load python
+    module load ncarenv python > /dev/null
     ncar_pylib > /dev/null
     
     if ! globus whoami &> /dev/null; then
