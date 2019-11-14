@@ -5,7 +5,7 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   13:10, 08 Nov 2019
+#   Last Revised:   09:02, 14 Nov 2019
 #
 
 # First, make sure environment is configured for globus
@@ -24,6 +24,7 @@ if ! globus whoami &> /dev/null; then
 fi
 
 # Set fields we care about in commands
+CSPREFIX=/glade/campaign
 CERTFILE=~/.$USER-globus.cert
 EPGLADE=$(globus endpoint search "NCAR GLADE"               \
           --filter-owner-id ncar@globusid.org               \
@@ -95,7 +96,7 @@ done
 
 if [[ -f $GCIBIN/$GCICMD ]]; then
     shift
-    export EPGLADE EPSTORE
+    export EPGLADE EPSTORE CSPREFIX
     echo
     $GCIBIN/$GCICMD $@
 else
