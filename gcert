@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   13:09, 08 Nov 2019
+#   Last Revised:   14:45, 22 Sep 2020
 #
 
 function usage {
@@ -26,14 +26,16 @@ function cert_usage {
         globus login
     fi
     
+    EPQTAPE=$(globus endpoint search "NCAR Quasar" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
     EPGLADE=$(globus endpoint search "NCAR GLADE" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
     EPSTORE=$(globus endpoint search "NCAR Campaign Storage" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
+    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPQTAPE > /dev/null
     globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPGLADE > /dev/null
     globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPSTORE > /dev/null
 
     if [[ $? == 0 ]]; then
-        echo -e "\nSuccess: GLADE and Campaign Storage endpoints are now using your"
-        echo -e "         long-lived certificate\n"
+        echo -e "\nSuccess: NCAR/CISL endpoints (e.g., GLADE, Campaign Storage) are now activated using"
+        echo -e "         your long-lived certificate\n"
     fi
 }
 
