@@ -7,7 +7,7 @@
 #   the gci command.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   08:55, 14 Nov 2019
+#   Last Revised:   10:07, 22 Mar 2021
 #
 
 function usage {
@@ -40,7 +40,15 @@ fi
 # Cycle through command-line arguments and check on SOURCE and DEST
 function check_paths {
     [[ $SPATH != /gpfs/csfs1/* ]] && [[ $SPATH != $CSPREFIX/* ]] && SPATH=$CSPREFIX/$SPATH
-    [[ $GPATH != /* ]] && GPATH=$(pwd)/$GPATH
+
+    if [[ -d /glade/u/home/$USER ]]; then
+        [[ $GPATH != /* ]] && GPATH=$(pwd)/$GPATH
+    elif [[ $GPATH != /* ]]; then
+        >&2 echo "Error: Full path on GLADE must be specified when running on an"
+        >&2 echo "       external machine."
+        exit 1
+    fi
+
     [[ $RMODE != true ]] && [[ $SPATH == */ ]] && SPATH=$SPATH/${GPATH##*/}
 }
 

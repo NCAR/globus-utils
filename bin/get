@@ -7,7 +7,7 @@
 #   the gci command.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   08:55, 14 Nov 2019
+#   Last Revised:   22:14, 21 Mar 2021
 #
 
 function usage {
@@ -19,7 +19,9 @@ from Campaign Storage and copies them to the target location
 on GLADE.
 
 If a destination is not specified, the file or directory will be
-copied to the present working directory on GLADE.
+copied to the present working directory on GLADE. If you are
+running this command from an external machine, you must specify
+the full path on GLADE.
 
 Batch mode is also supported. In this mode, standard input (as a
 file or here-doc) is given  which contains SOURCE and DESTINATION
@@ -44,8 +46,16 @@ fi
 # Cycle through command-line arguments and check on SOURCE and DEST
 function check_paths {
     [[ $SPATH != /gpfs/csfs1/* ]] && [[ $SPATH != $CSPREFIX/* ]] && SPATH=$CSPREFIX/$SPATH
-    [[ $GPATH != /* ]] && GPATH=$(pwd)/$GPATH
-    [[ ${GPATH}z == z ]] && GPATH=$(pwd)/${SPATH##*/}
+
+    if [[ -d /glade/u/home/$USER ]]; then
+        [[ $GPATH != /* ]] && GPATH=$(pwd)/$GPATH
+        [[ ${GPATH}z == z ]] && GPATH=$(pwd)/${SPATH##*/}
+    elif [[ $GPATH != /* ]]; then
+        >&2 echo "Error: Full path on GLADE must be specified when running on an"
+        >&2 echo "       external machine."
+        exit 1
+    fi
+
     [[ $RMODE != true ]] && [[ -d $GPATH ]] && GPATH=$GPATH/${SPATH##*/}
 }
 
