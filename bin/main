@@ -5,27 +5,36 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   09:02, 14 Nov 2019
+#   Last Revised:   18:55, 21 Mar 2021
 #
 
 # First, make sure environment is configured for globus
 echo "Initializing Globus CLI environment ..."
 
 if ! which globus &> /dev/null; then
-    module load ncarenv python > /dev/null
-    ncar_pylib > /dev/null
+    if [[ -n $NCAR_HOST ]]; then
+        module load ncarenv python > /dev/null
+        ncar_pylib > /dev/null
+    else
+        >&2 echo "Error: cannot find globus command in current PATH"
+        exit 1
+    fi
 fi
 
 # Then, make sure the user is logged in
 if ! globus whoami &> /dev/null; then
-    echo 'Error: login to Globus service using "globus login" before using gcs'
+    echo 'Error: login to Globus service using "globus login" before using gci'
     echo '       (access Globus CLI via NCAR Package Library in Python)'
     exit 1
 fi
 
 # Set fields we care about in commands
+BFILE=
 CSPREFIX=/glade/campaign
 CERTFILE=~/.$USER-globus.cert
+EPQTAPE=$(globus endpoint search "NCAR Quasar"              \
+          --filter-owner-id ncar@globusid.org               \
+          --jq "DATA[0].id" --format UNIX)
 EPGLADE=$(globus endpoint search "NCAR GLADE"               \
           --filter-owner-id ncar@globusid.org               \
           --jq "DATA[0].id" --format UNIX)
@@ -48,7 +57,7 @@ EOF
 echo "Checking endpoint status ..."
 MSGDONE=false
 
-for EPID in $EPGLADE $EPSTORE; do
+for EPID in $EPQTAPE $EPGLADE $EPSTORE; do
     if ! globus endpoint is-activated $EPID &> /dev/null || [[ $AFORCE == true ]]; then
         if [[ $LIFETIME != 12 ]] && [[ $MSGDONE == false ]]; then
             echo "Using custom lifetime of $LIFETIME h"
@@ -86,7 +95,7 @@ for KEY in $@; do
     case $KEY in
         --batch)
             export BMODE=true
-            export BFILE=/glade/scratch/$USER/globbatch.$$
+            export BFILE=$(mktemp ${TMPDIR:-/tmp/}/.gcibatch.XXXXXX)
             ;;
         -r|--recursive)
             export RMODE=true
@@ -96,11 +105,15 @@ done
 
 if [[ -f $GCIBIN/$GCICMD ]]; then
     shift
-    export EPGLADE EPSTORE CSPREFIX
+    export EPQTAPE EPGLADE EPSTORE CSPREFIX
     echo
     $GCIBIN/$GCICMD $@
+    RETCODE=$?
 else
     echo -e "Error: invalid command $GCICMD\n"
     usage
-    exit 1
+    RETCODE=1
 fi
+
+rm -f $BFILE
+exit $RETCODE

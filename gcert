@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   14:45, 22 Sep 2020
+#   Last Revised:   17:42, 21 Mar 2021
 #
 
 function usage {
@@ -16,10 +16,7 @@ EOF
 
 function cert_usage {
     echo -e "\nActivating endpoints using certificate ..."
-    
-    module load ncarenv python > /dev/null
-    ncar_pylib > /dev/null
-    
+   
     if ! globus whoami &> /dev/null; then
         echo "You are not currently logged into the Globus service"
         echo "Running 'globus login' ..."
@@ -44,12 +41,21 @@ if [[ " $@ " == *" -h "* ]]; then
     exit 0
 fi
 
-if [[ $(hostname) == r* ]]; then
-    echo "Error:   gcert requires and outbound connection to the Globus auth server"
-    echo "         and therefore cannot be run from PBS jobs"
+if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
+    >&2 echo "Error:   gcert requires an outbound connection to the Globus auth server"
+    >&2 echo "         and therefore cannot be run from Cheyenne batch jobs"
 
     exit 1
 fi
+    
+if [[ -n $NCAR_HOST ]]; then
+    module load ncarenv python > /dev/null
+    ncar_pylib > /dev/null
+elif ! which globus >& /dev/null; then
+    >&2 echo "Error:   the globus command must be in your PATH when running this script"
+    exit 1
+fi
+    
     
 if [[ -f ~/.${USER}-globus.cert ]]; then
 cat << EOF
@@ -98,7 +104,7 @@ cat << EOF
 Globus certificate created in ${HOME}!
 
 To ensure the security of your data, do not share the certificate.
-Deleting the input credential file from GLADE is strongly advised:
+Deleting the following input credential file is strongly advised:
 
     $1
 EOF

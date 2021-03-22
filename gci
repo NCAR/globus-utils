@@ -7,14 +7,14 @@
 #   Campaign Storage file systems
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   10:33, 02 Oct 2019
+#   Last Revised:   19:02, 21 Mar 2021
 #
 
 unset BFILE
 
 function clean_up {
     CMDSTAT=$?
-    rm -f $BFILE
+    rm -f $BTMP
     exit $CMDSTAT
 }
 
@@ -89,8 +89,14 @@ done
 # If in batch mode, store stdin in a file
 if [[ " $@ " == *" --batch "* ]]; then
     MYTMP=${TMPDIR:-fakepath}
-    export BTMP=/glade/scratch/$USER/globtmp.$$
 
+    if [[ -d /glade/scratch/$USER ]]; then
+        export TMPDIR=/glade/scratch/$USER
+    fi
+    
+    BTMP=$(mktemp ${TMPDIR:-/tmp/}/.gcibatch.XXXXXX)
+
+    # Make sure stdin was actually used
     if [[ $(readlink -f /dev/stdin) =~ /(glade|tmp|$MYTMP)/* ]] ; then
         cat > $BTMP
     fi
@@ -99,7 +105,7 @@ fi
 # Call main script locally or on login node
 export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
 
-if [[ $(hostname) == r* ]]; then
+if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
     SNODE=$(shuf -i 1-6 -n 1)
     LN=$SNODE SSHSTAT=255
     RCMD="export BGCMD=$BGCMD DEBUG=$DEBUG BTMP=$BTMP TMPDIR=$TMPDIR GCIBIN=$GCIBIN LIFETIME=$LIFETIME AFORCE=$AFORCE; cd $(pwd); $GCIBIN/main $@"
