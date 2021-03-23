@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   17:42, 21 Mar 2021
+#   Last Revised:   00:36, 23 Mar 2021
 #
 
 function usage {
@@ -14,6 +14,15 @@ Input the path to the InCommon certificate file (p12 extension).
 EOF
 }
 
+# List of NCAR endpoints to support
+declare -A EPL
+EPL[CAMPAIGN]="NCAR Campaign Storage"
+EPL[QUASAR]="NCAR Quasar"
+EPL[AWS]="NCAR AWS S3"
+EPL[HPSS]="NCAR HPSS"
+EPL[SHARE]="NCAR Data Sharing Service"
+EPL[GLADE]="NCAR GLADE"
+
 function cert_usage {
     echo -e "\nActivating endpoints using certificate ..."
    
@@ -23,17 +32,17 @@ function cert_usage {
         globus login
     fi
     
-    EPQTAPE=$(globus endpoint search "NCAR Quasar" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
-    EPGLADE=$(globus endpoint search "NCAR GLADE" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
-    EPSTORE=$(globus endpoint search "NCAR Campaign Storage" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
-    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPQTAPE > /dev/null
-    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPGLADE > /dev/null
-    globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPSTORE > /dev/null
+    for EP in ${!EPL[@]}; do
+        echo -n "  -> ${EPL[$EP]} - "
+        EPID=$(globus endpoint search "${EPL[$EP]}" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
+        globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPID > /dev/null
 
-    if [[ $? == 0 ]]; then
-        echo -e "\nSuccess: NCAR/CISL endpoints (e.g., GLADE, Campaign Storage) are now activated using"
-        echo -e "         your long-lived certificate\n"
-    fi
+        if [[ $? == 0 ]]; then
+            echo "success"
+        else
+            echo "failed to activate"
+        fi
+    done
 }
 
 if [[ " $@ " == *" -h "* ]]; then
