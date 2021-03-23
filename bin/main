@@ -5,11 +5,17 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   18:55, 21 Mar 2021
+#   Last Revised:   23:22, 22 Mar 2021
 #
 
+function verb_msg {
+    if [[ $VMODE ]]; then
+        echo "$1"
+    fi
+}
+
 # First, make sure environment is configured for globus
-echo "Initializing Globus CLI environment ..."
+verb_msg "Initializing Globus CLI environment ..."
 
 if ! which globus &> /dev/null; then
     if [[ -n $NCAR_HOST ]]; then
@@ -30,17 +36,20 @@ fi
 
 # Set fields we care about in commands
 BFILE=
-CSPREFIX=/glade/campaign
+MSGDONE=false
 CERTFILE=~/.$USER-globus.cert
-EPQTAPE=$(globus endpoint search "NCAR Quasar"              \
-          --filter-owner-id ncar@globusid.org               \
-          --jq "DATA[0].id" --format UNIX)
-EPGLADE=$(globus endpoint search "NCAR GLADE"               \
-          --filter-owner-id ncar@globusid.org               \
-          --jq "DATA[0].id" --format UNIX)
-EPSTORE=$(globus endpoint search "NCAR Campaign Storage"    \
-          --filter-owner-id ncar@globusid.org               \
-          --jq "DATA[0].id" --format UNIX)
+
+# List of NCAR endpoints to support
+declare -A EPL EPR
+EPL[GLADE]="NCAR GLADE"
+EPL[CAMPAIGN]="NCAR Campaign Storage"
+EPL[QUASAR]="NCAR Quasar"
+EPL[SHARE]="NCAR Data Sharing Service"
+
+EPR[CAMPAIGN]=/glade/campaign
+EPR[SHARE]=/glade/p/datashare
+EPR[GLADE]=/glade
+EPR[QUASAR]=/gpfs/gpfs0/archive
 
 # User messages
 function cert_notice {
@@ -53,67 +62,86 @@ Using standard authenication with two-factor login ..."
 EOF
 }
 
-# Next, perform endpoint activation check
-echo "Checking endpoint status ..."
-MSGDONE=false
+# Process paths and associated endpoints
+for ARG in $@; do
+    EPID= EPPATH=
 
-for EPID in $EPQTAPE $EPGLADE $EPSTORE; do
-    if ! globus endpoint is-activated $EPID &> /dev/null || [[ $AFORCE == true ]]; then
-        if [[ $LIFETIME != 12 ]] && [[ $MSGDONE == false ]]; then
-            echo "Using custom lifetime of $LIFETIME h"
+    if [[ $ARG == *:* ]]; then
+        EPID=$(cut -d: -f1 <<< ${ARG^^})
+        EPPATH=${ARG#*:}
+    elif [[ $ARG == /* ]]; then
+        EPPATH=$ARG
+        
+        for KEY in ${!EPR[@]}; do
+            if [[ $ARG == ${EPR[$KEY]}* ]]; then
+                EPID=$KEY
+            fi
+        done
+    fi
+
+    if [[ -z $EPID ]] && [[ $EPPATH ]]; then
+        >&2 echo "Error: file system not supported ($ARG)"
+        exit 1
+    fi
+
+    if [[ -v EPL[$EPID] ]]; then
+        verb_msg "Using endpoint ${EPL[$EPID]} ..."
+        
+        # Complete NCAR path if relative
+        if [[ $EPPATH != /* ]]; then
+            EPPATH=${EPR[$EPID]}/$EPPATH
+        fi
+       
+        EPID=$(globus endpoint search "${EPL[$EPID]}"   \
+               --filter-owner-id ncar@globusid.org      \
+               --jq "DATA[0].id" --format UNIX)
+        
+        verb_msg "Endpoint identified as $EPID"
+        
+        if ! globus endpoint is-activated $EPID &> /dev/null || [[ $AFORCE ]]; then
+            verb_msg "Activating endpoint with $LIFETIME h lifetime"
+            
+            if [[ -f $CERTFILE ]]; then
+                globus endpoint activate    --no-autoactivate --force   \
+                                            --delegate-proxy $CERTFILE  \
+                                            --proxy-lifetime $LIFETIME  \
+                                            $EPID > /dev/null
+            else
+                [[ $MSGDONE == false ]] && cert_notice
+                globus endpoint activate    --no-autoactivate --force   \
+                                            --proxy-lifetime $LIFETIME  \
+                                            --myproxy $EPID
+            fi
+
+            STATUS=$?
+
+            if [[ $STATUS != 0 ]]; then
+                echo -e "\nError: could not activate endpoint"
+                exit 1
+            fi
+
             MSGDONE=true
         fi
-
-        echo "  activating $EPID"
-
-        if [[ -f $CERTFILE ]]; then
-            globus endpoint activate    --no-autoactivate --force   \
-                                        --delegate-proxy $CERTFILE  \
-                                        --proxy-lifetime $LIFETIME  \
-                                        $EPID > /dev/null
-        else
-            cert_notice
-            globus endpoint activate    --no-autoactivate --force   \
-                                        --proxy-lifetime $LIFETIME  \
-                                        --myproxy $EPID
-        fi
-
-        STATUS=$?
-
-        if [[ $STATUS != 0 ]]; then
-            echo "Error: could not activate endpoint (error $STATUS). Aborting."
-            exit 2
-        fi
+    fi
+    
+    if [[ $EPID ]]; then
+        CMDARGS+=("$EPID:$EPPATH")
+    else
+        CMDARGS+=("$ARG")
     fi
 done
 
-# Now that we are configured, run sub-command
-export GCICMD=$1
+if [[ $VMODE ]] || [[ $DEBUG ]]; then
+cat << EOF
+Running command from $(hostname) at $(date -Iseconds) ...
 
-# Scan Globus options for impactful settings
-for KEY in $@; do
-    case $KEY in
-        --batch)
-            export BMODE=true
-            export BFILE=$(mktemp ${TMPDIR:-/tmp/}/.gcibatch.XXXXXX)
-            ;;
-        -r|--recursive)
-            export RMODE=true
-            ;;
-    esac
-done
+    globus ${CMDARGS[@]}
 
-if [[ -f $GCIBIN/$GCICMD ]]; then
-    shift
-    export EPQTAPE EPGLADE EPSTORE CSPREFIX
-    echo
-    $GCIBIN/$GCICMD $@
-    RETCODE=$?
-else
-    echo -e "Error: invalid command $GCICMD\n"
-    usage
-    RETCODE=1
+EOF
 fi
 
-rm -f $BFILE
+if [[ -z $DEBUG ]]; then
+    globus "${CMDARGS[@]}"
+fi
+
 exit $RETCODE

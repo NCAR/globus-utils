@@ -1,16 +1,15 @@
 #!/bin/bash
 #
-#   gci - Globus Campaign Storage interface
+#   gci - globus command interface
 #
-#   This command redirects actions to other helper commands
-#   that perform Globus operations between GLADE and the
-#   Campaign Storage file systems
+#   This command assists in activation of the NCAR-CISL managed
+#   Globus endpoints and then forwards the provided subcommand
+#   to globus. It also facilitates running on a Cheyenne batch
+#   node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   19:02, 21 Mar 2021
+#   Last Revised:   23:01, 22 Mar 2021
 #
-
-unset BFILE
 
 function clean_up {
     CMDSTAT=$?
@@ -24,47 +23,58 @@ trap clean_up SIGHUP SIGINT SIGQUIT SIGTERM
 # Do we need help?
 function usage {
 cat << EOF
-Usage: $0 [OPTIONS] COMMAND
+Usage: $0 [OPTIONS] COMMAND [SOURCE] DESTINATION
 
 This utility provides a convenient interface for transferring files between
-the CISL endpoints "NCAR GLADE" and "NCAR Campaign Storage". An attempt will
-be made to auto-authenticate using a long-lived certificate file. All requests
-utilize the Globus CLI to schedule and conduct transfers.
+CISL Globus endpoints. An attempt will be made to auto-authenticate using a
+long-lived certificate file. These are InCommon Certificates and can be
+acquired at http://support.ucar.edu and then prepared using the gcert utility.
+All requests utilize the Globus CLI to schedule and conduct transfers.
 
-Available commands:
-    cget    conditionally copy files from campaign Storage to GLADE if newer
-    cput    conditionally copy files from GLADE to Campaign Storage if newer
-    get     copy files from campaign Storage to GLADE
-    put     copy files from GLADE to Campaign Storage
-    mkdir   create a new directory on Campaign Storage
-    ls      list files from a directory on Campaign Storage
-    rm      remove files on Campaign Storage
+Any globus CLI subcommand can be given to this command. Any argument that
+specifies an endpoint:path format or simply a path with a known file system
+prefix will cause gci to obtain the endpoint ID and activate for you.
 
 gci options:
-    -b, --background        run transfer in background - do not wait for it to finish
-    -f, --force-auth        force gci to re-authenticate endpoints regardless of status
-    -l, --cert-lifetime N   authenticate endpoints for N hours (0<N<=720, default=12)
+    --force-auth        force gci to re-authenticate endpoints regardless of status
+    --cert-lifetime N   authenticate endpoints for N hours (0<N<=720, default=24)
+    --debug             output command with endpoint formatting and exit
+    --silent            only output text from the globus command (except errors)
+
+Specifying Endpoints
+
+gci allows you to specify endpoints in two different ways. You may:
+
+1.  Provide the full path for each file - the endpoint will be detected by gci based
+    on the path (e.g., /glade/campaign is Campaign Storage). If an unknown absolute
+    path is provided, an error will occur.
+2.  Explicitly specify the endpoint before the path, separated by a colon. The lowest
+    common level will be specified if a relative path is given.
+
+    endpoints:common root
+    ---------------------
+    glade:/glade
+    campaign:/glade/campaign
+    share:/glade/p/datashare
+    quasar:/gpfs/gpfs0/archive
+    id:/path/on/any/filesystem
 
 EOF
 }
 
 # Set some defaults
-export LIFETIME=12 AFORCE=false
+export LIFETIME=24 AFORCE= VMODE=true DEBUG=
 
 while [[ $# -gt 0 ]]; do
-    KEY="$1"
-    case $KEY in
-        -h|--help)
+    case $1 in
+        --gcihelp)
             usage
             exit 0
             ;;
-        -b|--background)
-            export BGCMD=true
-            ;;
-        -d|--debug)
+        --debug)
             export DEBUG=true
             ;;
-        -l|--cert-lifetime)
+        --cert-lifetime)
             if [[ $KEY == *=* ]]; then
                 LIFETIME=${KEY#*=}
             else
@@ -77,12 +87,16 @@ while [[ $# -gt 0 ]]; do
                 exit 200
             fi
             ;;
-        -f|--force-auth)
+        --force-auth)
             AFORCE=true
             ;;
+        --silent)
+            VMODE=
+            ;;
         *)
-            break
-    esac
+            GARGS+=("$1")
+            ;;
+        esac
     shift
 done
 
@@ -94,7 +108,7 @@ if [[ " $@ " == *" --batch "* ]]; then
         export TMPDIR=/glade/scratch/$USER
     fi
     
-    BTMP=$(mktemp ${TMPDIR:-/tmp/}/.gcibatch.XXXXXX)
+    export BTMP=$(mktemp ${TMPDIR:-/tmp/}/.gcibatch.XXXXXX)
 
     # Make sure stdin was actually used
     if [[ $(readlink -f /dev/stdin) =~ /(glade|tmp|$MYTMP)/* ]] ; then
@@ -108,7 +122,8 @@ export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
 if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
     SNODE=$(shuf -i 1-6 -n 1)
     LN=$SNODE SSHSTAT=255
-    RCMD="export BGCMD=$BGCMD DEBUG=$DEBUG BTMP=$BTMP TMPDIR=$TMPDIR GCIBIN=$GCIBIN LIFETIME=$LIFETIME AFORCE=$AFORCE; cd $(pwd); $GCIBIN/main $@"
+    RCMD="  export BTMP=$BTMP TMPDIR=$TMPDIR VMODE=$VMODE AFORCE=$AFORCE DEBUG=$DEBUG   \
+            LIFETIME=$LIFETIME; cd $(pwd); $GCIBIN/main ${GARGS[@]}"
 
     while [[ $SSHSTAT -eq 255 ]]; do
         ssh cheyenne${LN}.ib0 "/bin/bash -c \"$RCMD\""
@@ -128,7 +143,7 @@ if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
 
     exit $SSHSTAT
 else
-    $GCIBIN/main $@
+    $GCIBIN/main "${GARGS[@]}"
 fi
 
 clean_up
