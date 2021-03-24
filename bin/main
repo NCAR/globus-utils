@@ -5,7 +5,7 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   23:22, 22 Mar 2021
+#   Last Revised:   13:08, 24 Mar 2021
 #
 
 function verb_msg {
@@ -67,7 +67,7 @@ for ARG in $@; do
     EPID= EPPATH=
 
     if [[ $ARG == *:* ]]; then
-        EPID=$(cut -d: -f1 <<< ${ARG^^})
+        EPID=${ARG%:*}
         EPPATH=${ARG#*:}
     elif [[ $ARG == /* ]]; then
         EPPATH=$ARG
@@ -84,8 +84,9 @@ for ARG in $@; do
         exit 1
     fi
 
-    if [[ -v EPL[$EPID] ]]; then
-        verb_msg "Using endpoint ${EPL[$EPID]} ..."
+    if [[ " ${!EPL[@]} " == *" ${EPID^^} "* ]]; then
+        EPID=${EPID^^}
+        verb_msg "Using endpoint ${EPL[${EPID^^}]} ..."
         
         # Complete NCAR path if relative
         if [[ $EPPATH != /* ]]; then
