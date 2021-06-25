@@ -5,7 +5,7 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   13:08, 24 Mar 2021
+#   Last Revised:   11:12, 25 Jun 2021
 #
 
 function verb_msg {
@@ -37,7 +37,12 @@ fi
 # Set fields we care about in commands
 BFILE=
 MSGDONE=false
-CERTFILE=~/.$USER-globus.cert
+
+if [[ -n $GCERT_USER ]]; then
+    CERTFILE=~/.$GCERT_USER-globus.cert
+else
+    CERTFILE=~/.$USER-globus.cert
+fi
 
 # List of NCAR endpoints to support
 declare -A EPL EPR
