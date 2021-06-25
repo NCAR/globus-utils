@@ -8,7 +8,7 @@
 #   node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   23:01, 22 Mar 2021
+#   Last Revised:   11:11, 25 Jun 2021
 #
 
 function clean_up {
@@ -117,13 +117,13 @@ if [[ " $@ " == *" --batch "* ]]; then
 fi
 
 # Call main script locally or on login node
-export GCIBIN=$(cd "$(dirname "$0")"; pwd)/bin
+export GCIUTIL=$(cd "$(dirname "$0")"; pwd)/util
 
 if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
     SNODE=$(shuf -i 1-6 -n 1)
     LN=$SNODE SSHSTAT=255
     RCMD="  export BTMP=$BTMP TMPDIR=$TMPDIR VMODE=$VMODE AFORCE=$AFORCE DEBUG=$DEBUG   \
-            LIFETIME=$LIFETIME; cd $(pwd); $GCIBIN/main ${GARGS[@]}"
+            LIFETIME=$LIFETIME; cd $(pwd); $GCIUTIL/main ${GARGS[@]}"
 
     while [[ $SSHSTAT -eq 255 ]]; do
         ssh cheyenne${LN}.ib0 "/bin/bash -c \"$RCMD\""
@@ -143,7 +143,7 @@ if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
 
     exit $SSHSTAT
 else
-    $GCIBIN/main "${GARGS[@]}"
+    $GCIUTIL/main "${GARGS[@]}"
 fi
 
 clean_up

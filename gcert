@@ -3,7 +3,7 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   00:36, 23 Mar 2021
+#   Last Revised:   11:09, 25 Jun 2021
 #
 
 function usage {
@@ -35,7 +35,7 @@ function cert_usage {
     for EP in ${!EPL[@]}; do
         echo -n "  -> ${EPL[$EP]} - "
         EPID=$(globus endpoint search "${EPL[$EP]}" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
-        globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${USER}-globus.cert $EPID > /dev/null
+        globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${GCERT_USER}-globus.cert $EPID > /dev/null
 
         if [[ $? == 0 ]]; then
             echo "success"
@@ -64,19 +64,24 @@ elif ! which globus >& /dev/null; then
     >&2 echo "Error:   the globus command must be in your PATH when running this script"
     exit 1
 fi
+
+if [[ -z $GCERT_USER ]]; then
+    GCERT_USER=$USER
+fi
     
-    
-if [[ -f ~/.${USER}-globus.cert ]]; then
+if [[ -f ~/.${GCERT_USER}-globus.cert ]]; then
+if [[ $# -gt 0 ]]; then
 cat << EOF
 Note:    a Globus certificate already exists in your home directory. Please
          delete this file before running this script if you wish to create
          a new certificate.
 
-         ${HOME}/.${USER}-globus.cert
+         ${HOME}/.${GCERT_USER}-globus.cert
 EOF
+fi
 
     cert_usage
-    exit 2
+    exit
 else
     if [[ ! -f $1 ]]; then
         usage
@@ -85,27 +90,27 @@ else
 fi
 
 # Convert PFX file to PEM (try PIN-less first, then ask)
-openssl pkcs12 -in $1 -passout pass:tpass -passin pass: > ${USER}.pem 2> /dev/null
+openssl pkcs12 -in $1 -passout pass:tpass -passin pass: > ${GCERT_USER}.pem 2> /dev/null
 
 if [[ $? == 1 ]]; then
     echo -e "InCommon certificate appears to be PIN-protected. Please enter your PIN below.\n"
-    openssl pkcs12 -in $1 -passout pass:tpass > ${USER}.pem || exit 1
+    openssl pkcs12 -in $1 -passout pass:tpass > ${GCERT_USER}.pem || exit 1
 fi
 
 # Remove passphrase from private key
-openssl rsa -in ${USER}.pem -out ${USER}-rsa.pem -passin pass:tpass
+openssl rsa -in ${GCERT_USER}.pem -out ${GCERT_USER}-rsa.pem -passin pass:tpass
 
 # Get necessary certificate for globus
-awk '/-----BEGIN C/{p=1}/-----END C/{print;exit} p' ${USER}.pem > ~/.${USER}-globus.cert
+awk '/-----BEGIN C/{p=1}/-----END C/{print;exit} p' ${GCERT_USER}.pem > ~/.${GCERT_USER}-globus.cert
 
 # Append the RSA key onto the cert file
-cat ${USER}-rsa.pem >> ~/.${USER}-globus.cert
+cat ${GCERT_USER}-rsa.pem >> ~/.${GCERT_USER}-globus.cert
 
 # Remove temporary files for security
-rm ${USER}.pem ${USER}-rsa.pem
+rm ${GCERT_USER}.pem ${GCERT_USER}-rsa.pem
 
 # Set strict permissions on cert file for security
-chmod 400 ~/.${USER}-globus.cert
+chmod 400 ~/.${GCERT_USER}-globus.cert
 
 cat << EOF
 
