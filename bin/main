@@ -5,7 +5,7 @@
 #   within an SSH call if running in a Cheyenne batch node.
 #
 #   Author:         Brian Vanderwende
-#   Last Revised:   18:55, 21 Mar 2021
+#   Last Revised:   09:32, 11 Mar 2022
 #
 
 # First, make sure environment is configured for globus
@@ -13,8 +13,9 @@ echo "Initializing Globus CLI environment ..."
 
 if ! which globus &> /dev/null; then
     if [[ -n $NCAR_HOST ]]; then
-        module load ncarenv python > /dev/null
-        ncar_pylib > /dev/null
+        module purge &> /dev/null
+        module load ncarenv conda &> /dev/null
+        conda activate npl &> /dev/null
     else
         >&2 echo "Error: cannot find globus command in current PATH"
         exit 1
@@ -24,7 +25,7 @@ fi
 # Then, make sure the user is logged in
 if ! globus whoami &> /dev/null; then
     echo 'Error: login to Globus service using "globus login" before using gci'
-    echo '       (access Globus CLI via NCAR Package Library in Python)'
+    echo '       (access Globus CLI via NCAR Python Library conda environment)'
     exit 1
 fi
 
