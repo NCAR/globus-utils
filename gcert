@@ -3,124 +3,29 @@
 #   gcert - generate Globus certificate from InCommon cert file
 #
 #   Author:          Brian Vanderwende
-#   Last Revised:   11:09, 25 Jun 2021
+#   Last Revised:   17:53, 08 Nov 2022
 #
 
-function usage {
 cat << EOF
-Usage: $0 CERTIFICATE
+==========================================================
+    NOTICE - GCERT AND GCI HAVE BEEN RETIRED!
+==========================================================
 
-Input the path to the InCommon certificate file (p12 extension).
-EOF
-}
+As of November 7th, 2022, gcert and gci will no longer
+function as CISL has migrated to version 5 of Globus,
+which does not use the "myproxy" method of authentication.
 
-# List of NCAR endpoints to support
-declare -A EPL
-EPL[CAMPAIGN]="NCAR Campaign Storage"
-EPL[QUASAR]="NCAR Quasar"
-EPL[AWS]="NCAR AWS S3"
-EPL[HPSS]="NCAR HPSS"
-EPL[SHARE]="NCAR Data Sharing Service"
-EPL[GLADE]="NCAR GLADE"
+You will need to update your unattended workflows to use
+the new "guest collection" method. A guest collection can
+be configured to provide access to any location on GLADE
+or Campaign Storage without two-factor authentication.
+(provided you have POSIX access to that path)
 
-function cert_usage {
-    echo -e "\nActivating endpoints using certificate ..."
-   
-    if ! globus whoami &> /dev/null; then
-        echo "You are not currently logged into the Globus service"
-        echo "Running 'globus login' ..."
-        globus login
-    fi
-    
-    for EP in ${!EPL[@]}; do
-        echo -n "  -> ${EPL[$EP]} - "
-        EPID=$(globus endpoint search "${EPL[$EP]}" --filter-owner-id ncar@globusid.org --jq "DATA[0].id" --format UNIX)
-        globus endpoint activate --force --no-autoactivate --delegate-proxy ~/.${GCERT_USER}-globus.cert $EPID > /dev/null
+See the folllowing documentation for more information on
+using guest collections for unattended workflows:
 
-        if [[ $? == 0 ]]; then
-            echo "success"
-        else
-            echo "failed to activate"
-        fi
-    done
-}
+https://arc.ucar.edu/knowledge_base/118521941
 
-if [[ " $@ " == *" -h "* ]]; then
-    usage
-    exit 0
-fi
-
-if [[ $NCAR_HOST == cheyenne ]] && [[ -n $PBS_JOBID ]]; then
-    >&2 echo "Error:   gcert requires an outbound connection to the Globus auth server"
-    >&2 echo "         and therefore cannot be run from Cheyenne batch jobs"
-
-    exit 1
-fi
-    
-if [[ -n $NCAR_HOST ]]; then
-    module load ncarenv python > /dev/null
-    ncar_pylib > /dev/null
-elif ! which globus >& /dev/null; then
-    >&2 echo "Error:   the globus command must be in your PATH when running this script"
-    exit 1
-fi
-
-if [[ -z $GCERT_USER ]]; then
-    GCERT_USER=$USER
-fi
-    
-if [[ -f ~/.${GCERT_USER}-globus.cert ]]; then
-if [[ $# -gt 0 ]]; then
-cat << EOF
-Note:    a Globus certificate already exists in your home directory. Please
-         delete this file before running this script if you wish to create
-         a new certificate.
-
-         ${HOME}/.${GCERT_USER}-globus.cert
-EOF
-fi
-
-    cert_usage
-    exit
-else
-    if [[ ! -f $1 ]]; then
-        usage
-        exit 1
-    fi
-fi
-
-# Convert PFX file to PEM (try PIN-less first, then ask)
-openssl pkcs12 -in $1 -passout pass:tpass -passin pass: > ${GCERT_USER}.pem 2> /dev/null
-
-if [[ $? == 1 ]]; then
-    echo -e "InCommon certificate appears to be PIN-protected. Please enter your PIN below.\n"
-    openssl pkcs12 -in $1 -passout pass:tpass > ${GCERT_USER}.pem || exit 1
-fi
-
-# Remove passphrase from private key
-openssl rsa -in ${GCERT_USER}.pem -out ${GCERT_USER}-rsa.pem -passin pass:tpass
-
-# Get necessary certificate for globus
-awk '/-----BEGIN C/{p=1}/-----END C/{print;exit} p' ${GCERT_USER}.pem > ~/.${GCERT_USER}-globus.cert
-
-# Append the RSA key onto the cert file
-cat ${GCERT_USER}-rsa.pem >> ~/.${GCERT_USER}-globus.cert
-
-# Remove temporary files for security
-rm ${GCERT_USER}.pem ${GCERT_USER}-rsa.pem
-
-# Set strict permissions on cert file for security
-chmod 400 ~/.${GCERT_USER}-globus.cert
-
-cat << EOF
-
-
-Globus certificate created in ${HOME}!
-
-To ensure the security of your data, do not share the certificate.
-Deleting the following input credential file is strongly advised:
-
-    $1
 EOF
 
-cert_usage
+exit 1
